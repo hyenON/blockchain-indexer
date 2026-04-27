@@ -1,6 +1,7 @@
 // 지갑 API — GET /wallets/:address/transactions|balances|stats
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query } from '@nestjs/common';
 import { WalletService } from './wallet.service';
+import { WalletImportService } from './wallet-import.service';
 
 // << bigint 는 JSON 직렬화 불가 → string 으로 변환
 function serialize(obj: unknown): unknown {
@@ -14,7 +15,10 @@ function serialize(obj: unknown): unknown {
 
 @Controller('wallets')
 export class WalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(
+    private readonly walletService: WalletService,
+    private readonly walletImportService: WalletImportService,
+  ) {}
 
   // API003 — GET /wallets/:address/transactions?chainId=1
   @Get(':address/transactions')
@@ -34,6 +38,15 @@ export class WalletController {
   ) {
     const balances = await this.walletService.getBalances(address, Number(chainId));
     return serialize(balances);
+  }
+
+  // POST /wallets/:address/import?chainId=1 — Alchemy 로 과거 이력 수집
+  @Post(':address/import')
+  async importHistory(
+    @Param('address') address: string,
+    @Query('chainId') chainId: string,
+  ) {
+    return this.walletImportService.importHistory(address);
   }
 
   // API005 — GET /wallets/:address/stats?chainId=1

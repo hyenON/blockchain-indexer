@@ -2,7 +2,7 @@
 // 시퀀스 다이어그램 #1 의 updateLastSyncedBlock() 호출에 대응
 // Repository 에 의존 (IRepository 인터페이스만 알고, 구현체는 모름)
 import { Injectable, Inject } from '@nestjs/common';
-import { IRepository } from '../domain/repository.interface';
+import type { IRepository } from '../domain/repository.interface';
 import { IndexerStatus, SyncStatus } from '../domain/types';
 
 @Injectable()

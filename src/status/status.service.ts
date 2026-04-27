@@ -1,6 +1,6 @@
 // 인덱서 상태 조회 서비스 — sync_status 테이블 기반
 import { Injectable, Inject } from '@nestjs/common';
-import { IRepository } from '../domain/repository.interface';
+import type { IRepository } from '../domain/repository.interface';
 import { SyncStatus } from '../domain/types';
 
 @Injectable()

@@ -2,7 +2,7 @@
 // RateLimiter → EventDecoder → Repository → SyncStatusManager 순서로 호출
 // 실패 시 최대 3회 재시도, 초과 시 해당 블록 skip (T-13)
 import { Injectable, Inject } from '@nestjs/common';
-import { IRepository } from '../domain/repository.interface';
+import type { IRepository } from '../domain/repository.interface';
 import { Block, Transaction } from '../domain/types';
 import { EventDecoder } from './event-decoder';
 import { RateLimiter } from './rate-limiter';

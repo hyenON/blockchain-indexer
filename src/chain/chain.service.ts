@@ -1,6 +1,6 @@
 // 체인 관리 서비스 — 지원 체인 목록 조회 및 추가
 import { Injectable, Inject } from '@nestjs/common';
-import { IRepository } from '../domain/repository.interface';
+import type { IRepository } from '../domain/repository.interface';
 import { Chain } from '../domain/types';
 
 @Injectable()

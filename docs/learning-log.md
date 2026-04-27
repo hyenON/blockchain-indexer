@@ -16,6 +16,10 @@
 - [L-07. 지금 테스트는 실제 블록이 아니다 — 가짜 데이터로 테스트하는 이유](#l-07-지금-테스트는-실제-블록이-아니다--가짜-데이터로-테스트하는-이유)
 - [L-08. Clean Architecture 레이어 — 의존성은 항상 안쪽으로](#l-08-clean-architecture-레이어--의존성은-항상-안쪽으로)
 - [L-09. Service 는 왜 얇아야 하나 — 로직은 안쪽, 조합은 바깥쪽](#l-09-service-는-왜-얇아야-하나--로직은-안쪽-조합은-바깥쪽)
+- [L-10. NestJS DI 와 TypeScript 인터페이스 — 왜 @Inject 토큰이 필요한가](#l-10-nestjs-di-와-typescript-인터페이스--왜-inject-토큰이-필요한가)
+- [L-11. bigint 와 JSON 직렬화 — HTTP 응답에서 string 으로 변환하는 이유](#l-11-bigint-와-json-직렬화--http-응답에서-string-으로-변환하는-이유)
+- [L-12. 블록 인덱서의 한계 — 과거 데이터는 어떻게 채우나](#l-12-블록-인덱서의-한계--과거-데이터는-어떻게-채우나)
+- [L-13. 블록 중심 vs 주소 중심 — 목적에 따라 인덱서 설계가 달라진다](#l-13-블록-중심-vs-주소-중심--목적에-따라-인덱서-설계가-달라진다)
 
 ---
 
@@ -520,3 +524,225 @@ async getTransactions(address: string) {
 - Service 코드가 짧으면 "설계를 잘 한 것"
 - 로직이 Service 에 몰리기 시작하면 "어느 레이어에 있어야 하지?" 를 먼저 물어봐야 함
 - Spring 에서 `@Service` 가 비대해지는 게 이 원칙을 어길 때 생기는 현상
+
+---
+
+## L-10. NestJS DI 와 TypeScript 인터페이스 — 왜 @Inject 토큰이 필요한가
+
+**배경:** `constructor(private readonly repo: IRepository)` 로 서비스를 작성했는데, 실제 앱을 실행하면 NestJS 가 `IRepository` 를 찾지 못해서 DI 실패가 난다.
+
+**원인:** TypeScript 인터페이스는 컴파일 후 사라진다.
+
+```typescript
+// TypeScript 코드
+constructor(private readonly repo: IRepository) {}
+
+// 컴파일된 JavaScript — interface 가 사라지고 Object 로 바뀜
+constructor(repo) {}
+// NestJS 가 reflect-metadata 로 타입을 읽으면 Object → 어떤 클래스인지 모름
+```
+
+Spring 은 바이트코드에 타입 정보가 남아있어서 `@Autowired` 로 자동 주입이 됐지만, TypeScript 는 런타임에 인터페이스 정보가 없어서 토큰이 필요하다.
+
+**해결 — 문자열 토큰 + @Inject:**
+
+```typescript
+// AppModule
+{ provide: 'IRepository', useClass: PrismaRepository }
+
+// Service
+constructor(@Inject('IRepository') private readonly repo: IRepository) {}
+```
+
+`'IRepository'` 라는 문자열 토큰을 키로 삼아 NestJS 가 `PrismaRepository` 를 주입한다.
+
+### Spring 과 비교
+
+```java
+// Spring — 인터페이스 타입만으로 자동 주입 가능 (바이트코드에 타입 정보 남음)
+@Autowired
+private BlockRepository blockRepository;
+
+// NestJS — 인터페이스는 런타임에 없으므로 토큰 명시 필요
+@Inject('IRepository') private readonly repo: IRepository
+```
+
+**배운 점:**
+- Spring 의 DI 가 편한 이유 중 하나가 JVM 바이트코드에 타입 정보가 유지되기 때문
+- TypeScript 는 컴파일 후 타입이 지워지므로, 인터페이스 기반 DI 는 항상 토큰이 필요
+- 단위 테스트에서는 NestJS DI 를 안 쓰고 `new Service(fakeRepo)` 로 직접 주입해서 이 문제가 없었던 것 — 실제 앱 실행할 때만 부딪힘
+
+---
+
+## L-11. bigint 와 JSON 직렬화 — HTTP 응답에서 string 으로 변환하는 이유
+
+**배경:** 컨트롤러에서 `blockNumber: 100n` 같은 bigint 값을 그냥 반환하면 에러가 난다.
+
+```
+TypeError: Do not know how to serialize a BigInt
+```
+
+**원인:** JSON 표준이 bigint 를 지원하지 않는다.
+
+```typescript
+JSON.stringify({ value: 100n });   // TypeError!
+JSON.stringify({ value: 100 });    // '{"value":100}'   — number 는 OK
+JSON.stringify({ value: "100" });  // '{"value":"100"}' — string 은 OK
+```
+
+JavaScript 의 `number` 는 2^53 - 1 이상의 숫자를 정밀도 손실 없이 표현 못 해서 wei 단위 금액에 `bigint` 를 썼는데, JSON 이 이를 못 다루는 문제가 생긴 것.
+
+**해결 — 컨트롤러에서 string 으로 변환:**
+
+```typescript
+function serialize(obj: unknown): unknown {
+  if (typeof obj === 'bigint') return obj.toString();
+  if (Array.isArray(obj)) return obj.map(serialize);
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, serialize(v)]));
+  }
+  return obj;
+}
+```
+
+API 응답에서는 `"blockNumber": "100"` 처럼 문자열로 내보내고, 클라이언트가 필요하면 `BigInt("100")` 으로 다시 변환한다.
+
+### 레이어별 타입 정리
+
+| 레이어 | bigint 처리 |
+|---|---|
+| Domain / Service | `bigint` 그대로 사용 |
+| Controller (HTTP 응답) | `string` 으로 변환 후 반환 |
+| DB (Prisma) | `Decimal(78,0)` 저장, 조회 시 `bigint` 로 변환 |
+
+**배운 점:**
+- 도메인에서 bigint → DB 에서 Decimal → HTTP 에서 string: 레이어마다 같은 값이 다른 타입으로 표현됨
+- 변환 책임을 레이어 경계(Repository, Controller)에 몰아두면 나머지 코드는 신경 안 써도 됨
+- 이게 Clean Architecture 에서 레이어를 나누는 또 다른 실질적인 이유
+
+---
+
+## L-12. 블록 인덱서의 한계 — 과거 데이터는 어떻게 채우나
+
+**배경:** 인덱서를 켰더니 "내 지갑 과거 거래내역을 왜 못 가져오지?" 라는 의문이 생겼다.
+
+**원인:** `watchBlocks` 는 미래만 본다.
+
+```
+인덱서 시작 시점: 블록 20,000,000
+watchBlocks 감지 범위: 20,000,001 ~ (앞으로 생기는 블록)
+
+내 지갑 첫 거래: 블록 15,000,000
+→ 인덱서가 켜지기 전 과거 → 영원히 안 들어옴
+```
+
+### 해결 방법 비교
+
+| 방법 | 원리 | 속도 | 비용 |
+|---|---|---|---|
+| BackfillWorker | 블록 하나씩 순회하며 모든 트랜잭션 파싱 | 매우 느림 | RPC 호출 수천~수만 번 |
+| Alchemy `getAssetTransfers` | 특정 주소의 이력만 직접 조회 | 빠름 | API 호출 수십 번 |
+
+**왜 Alchemy Enhanced API 가 빠른가:**
+
+Alchemy 는 이미 이더리움 전체 블록을 인덱싱해서 자체 DB 에 저장해뒀다. `getAssetTransfers(address)` 는 그 DB 에서 SQL SELECT 하는 것과 같다. 우리가 직접 블록을 긁는 것과 근본적으로 다르다.
+
+```
+우리 BackfillWorker:
+블록 15,000,000 → 15,000,001 → ... → 20,000,000
+= 5,000,000번 RPC 호출 → 며칠 걸림
+
+Alchemy getAssetTransfers(주소):
+= API 1번 호출 (내부적으로 Alchemy 의 인덱스 활용)
+= 수초 안에 완료
+```
+
+### 하이브리드 설계
+
+```
+실시간 (watchBlocks):
+새 블록 → 모든 트랜잭션 → DB 저장
+→ 앞으로 생기는 모든 데이터 커버
+
+과거 데이터 (WalletImportService):
+POST /wallets/:address/import
+→ Alchemy getAssetTransfers 호출
+→ 해당 주소 전체 이력 → DB 저장
+→ 이후 SELECT 로 바로 조회 가능
+```
+
+**배운 점:**
+- 블록 인덱서는 "모든 온체인 활동을 실시간으로 추적"하는 데 최적화됨
+- 특정 주소의 과거 이력이 필요하면 주소 중심 API(Alchemy Enhanced) 를 활용하는 게 현실적
+- 두 방식을 합치면 — 과거는 Alchemy 로 채우고, 미래는 watchBlocks 로 이어받는 완전한 구조가 됨
+- Etherscan, Rabby 같은 서비스들이 이 하이브리드 방식으로 운영됨
+
+---
+
+## L-13. 블록 중심 vs 주소 중심 — 목적에 따라 인덱서 설계가 달라진다
+
+**배경:** 서버를 실제로 실행했을 때 `watchBlocks` 가 이더리움 메인넷 전체 블록을 스캔하다가 Alchemy 429 에러로 터졌다. "내 지갑 거래내역을 보고 싶은데 왜 남의 거래까지 다 가져오지?" 라는 의문이 생겼다.
+
+### 두 가지 인덱서 설계
+
+**블록 중심 인덱서 (Block-centric)**
+```
+새 블록 감지 → 블록 안 모든 트랜잭션 파싱 → 전부 저장
+```
+- 적합한 서비스: Etherscan, The Graph, DEX 거래량 집계, DeFi 프로토콜 모니터링
+- 특징: 모든 온체인 활동을 빠짐없이 기록, 어떤 주소든 즉시 조회 가능
+- 비용: RPC 호출 엄청남 (블록당 트랜잭션 수백 개 × receipt 조회)
+
+**주소 중심 인덱서 (Address-centric)**
+```
+지갑 주소 등록 → 그 주소 관련 데이터만 수집
+```
+- 적합한 서비스: Rabby, MetaMask Portfolio, 지갑 앱
+- 특징: 내가 관심 있는 주소만 추적, 비용 효율적
+- 방법: Alchemy `getAssetTransfers` (과거) + Alchemy Webhook (실시간)
+
+### 우리 서비스에 맞는 설계
+
+지갑 앱을 만드는 게 목적이라면 블록 전체를 스캔할 이유가 없다.
+
+```
+❌ watchBlocks → 모든 트랜잭션 스캔
+✅ POST /wallets/:address/import → Alchemy로 그 주소 과거 이력만 가져옴
+✅ Alchemy Webhook → 등록된 주소에 새 거래 생기면 우리 서버로 알림
+```
+
+### 실제로 무슨 일이 일어났나
+
+```
+서버 시작
+    ↓
+watchBlocks 구독 시작
+    ↓
+이더리움 새 블록 감지 (트랜잭션 ~200개)
+    ↓
+200개 receipt 동시 요청 (Promise.all)
+    ↓
+Alchemy 무료 플랜 속도 제한 초과
+    ↓
+HTTP 429 Too Many Requests → 서버 크래시
+```
+
+이 경험이 "왜 설계를 목적에 맞게 잡아야 하는지"를 실제로 보여줬다. 코드가 아무리 잘 짜여 있어도 방향이 틀리면 실제로 돌렸을 때 바로 무너진다.
+
+### 현재 설계 기준 가능한 것
+
+| 기능 | 가능 여부 | 방법 |
+|---|---|---|
+| 과거 ERC-20 거래내역 조회 | ✅ | import 후 SELECT |
+| 토큰별 순 잔액 | ✅ | 받은 - 보낸 합산 |
+| 가장 많이 쓴 컨트랙트 TOP N | ✅ | GROUP BY |
+| 첫 거래 날짜 | ✅ | MIN(blockNumber) |
+| 실시간 새 거래 감지 | ❌ | Webhook 미연동 |
+| USD 환산 | ❌ | CoinGecko 미연동 |
+| ETH 네이티브 전송 | ❌ | ERC-20 only |
+
+**배운 점:**
+- "인덱서"라는 단어가 같아도 목적에 따라 설계가 완전히 달라짐
+- 블록 전체 스캔은 프로토콜 레벨 인프라(Etherscan급)에서나 하는 것
+- 지갑 앱 수준에서는 주소 중심 API + Webhook 조합이 현실적
+- 코드를 실제로 실행해봐야 설계 오류가 드러난다 — TDD가 로직을 잡아준다면, 실행은 설계를 잡아준다

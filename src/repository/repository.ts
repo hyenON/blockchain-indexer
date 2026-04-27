@@ -146,7 +146,7 @@ export class PrismaRepository implements IRepository {
       blockHash: row.blockHash,
       fromAddress: row.fromAddress,
       toAddress: row.toAddress,
-      value: BigInt(row.value.toString()), // Decimal → bigint 변환
+      value: BigInt(row.value.toFixed(0)), // Decimal → bigint 변환 (지수표기법 방지)
       gas: row.gas,
       input: row.input,
       nonce: row.nonce,
@@ -170,7 +170,7 @@ export class PrismaRepository implements IRepository {
       contractAddress: row.contractAddress,
       fromAddress: row.fromAddress,
       toAddress: row.toAddress,
-      amount: BigInt(row.amount.toString()), // Decimal → bigint 변환
+      amount: BigInt(row.amount.toFixed(0)), // Decimal → bigint 변환 (지수표기법 방지)
       logIndex: row.logIndex,
     }));
   }
@@ -179,22 +179,20 @@ export class PrismaRepository implements IRepository {
     address: string,
     chainId: number,
   ): Promise<{ contractAddress: string; count: number }[]> {
-    // groupBy: 주소가 보낸 트랜잭션을 컨트랙트 주소 기준으로 묶어서 횟수 집계
-    // → API005 통계 조회에서 "가장 많이 거래한 컨트랙트 TOP N" 에 사용
-    const result = await this.prisma.transaction.groupBy({
-      by: ['toAddress'],
+    // token_transfers 기반 집계 — import 된 데이터에서 가장 많이 거래한 컨트랙트 TOP 10
+    const result = await this.prisma.tokenTransfer.groupBy({
+      by: ['contractAddress'],
       where: {
         chainId,
-        fromAddress: address,
-        toAddress: { not: null }, // 컨트랙트 주소가 없는 ETH 전송은 제외
+        OR: [{ fromAddress: address }, { toAddress: address }],
       },
-      _count: { toAddress: true },
-      orderBy: { _count: { toAddress: 'desc' } },
+      _count: { contractAddress: true },
+      orderBy: { _count: { contractAddress: 'desc' } },
       take: 10,
     });
     return result.map((r) => ({
-      contractAddress: r.toAddress!,
-      count: r._count.toAddress,
+      contractAddress: r.contractAddress,
+      count: r._count.contractAddress,
     }));
   }
 
@@ -215,7 +213,7 @@ export class PrismaRepository implements IRepository {
       blockHash: row.blockHash,
       fromAddress: row.fromAddress,
       toAddress: row.toAddress,
-      value: BigInt(row.value.toString()),
+      value: BigInt(row.value.toFixed(0)),
       gas: row.gas,
       input: row.input,
       nonce: row.nonce,

@@ -38,9 +38,14 @@ export class BlockListener {
   // << watchBlocks 콜백 — Viem 블록을 도메인 타입으로 변환 후 BlockProcessor 에 위임
   // 테스트에서 직접 호출 가능하도록 public 으로 열어둠
   async onBlock(viemBlock: any): Promise<void> {
-    const block = this.mapBlock(viemBlock);
-    const transactions = await this.mapTransactions(viemBlock.transactions ?? [], viemBlock);
-    await this.blockProcessor.process(block, transactions);
+    try {
+      const block = this.mapBlock(viemBlock);
+      const transactions = await this.mapTransactions(viemBlock.transactions ?? [], viemBlock);
+      await this.blockProcessor.process(block, transactions);
+    } catch (e) {
+      // 429 등 RPC 에러 시 서버 크래시 방지 — BlockProcessor 내부에서 재시도 처리
+      console.error(`[BlockListener] block ${viemBlock.number} error:`, (e as Error).message);
+    }
   }
 
   // << Viem 블록 → 도메인 Block 변환
@@ -59,30 +64,29 @@ export class BlockListener {
   }
 
   // << Viem 트랜잭션 배열 → 도메인 Transaction 배열 변환
-  // 각 트랜잭션마다 receipt 를 조회해서 logs 포함
+  // 429 방지를 위해 순차 처리 (Promise.all → for loop)
   private async mapTransactions(viemTxs: any[], viemBlock: any): Promise<Transaction[]> {
-    return Promise.all(
-      viemTxs.map(async (tx) => {
-        const receipt = await this.viemClient.getTransactionReceipt({ hash: tx.hash });
-        const logs = this.mapLogs(receipt.logs, tx.hash, viemBlock.number);
-
-        return {
-          hash: tx.hash,
-          chainId: this.chainId,
-          blockNumber: viemBlock.number,
-          blockHash: viemBlock.hash,
-          fromAddress: tx.from,
-          toAddress: tx.to ?? null,
-          value: tx.value ?? 0n,
-          gas: tx.gas,
-          input: tx.input,
-          nonce: tx.nonce,
-          transactionIndex: tx.transactionIndex,
-          status: receipt.status,
-          logs,
-        };
-      }),
-    );
+    const results: Transaction[] = [];
+    for (const tx of viemTxs) {
+      const receipt = await this.viemClient.getTransactionReceipt({ hash: tx.hash });
+      const logs = this.mapLogs(receipt.logs, tx.hash, viemBlock.number);
+      results.push({
+        hash: tx.hash,
+        chainId: this.chainId,
+        blockNumber: viemBlock.number,
+        blockHash: viemBlock.hash,
+        fromAddress: tx.from,
+        toAddress: tx.to ?? null,
+        value: tx.value ?? 0n,
+        gas: tx.gas,
+        input: tx.input,
+        nonce: tx.nonce,
+        transactionIndex: tx.transactionIndex,
+        status: receipt.status,
+        logs,
+      });
+    }
+    return results;
   }
 
   // << Viem receipt logs → 도메인 RawLog 배열 변환

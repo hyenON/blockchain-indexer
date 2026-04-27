@@ -2,6 +2,7 @@
 // IRepository 토큰으로 PrismaRepository 를 주입, Viem 클라이언트는 useFactory 로 생성
 import { Module, OnApplicationBootstrap } from '@nestjs/common';
 import { createPublicClient, http } from 'viem';
+import { IRepository } from './domain/repository.interface';
 
 import { PrismaService } from './repository/prisma.service';
 import { PrismaRepository } from './repository/repository';
@@ -14,6 +15,7 @@ import { BlockListener } from './indexer/block-listener';
 import { BackfillWorker } from './indexer/backfill-worker';
 
 import { WalletService } from './wallet/wallet.service';
+import { WalletImportService } from './wallet/wallet-import.service';
 import { WalletController } from './wallet/wallet.controller';
 
 import { ChainService } from './chain/chain.service';
@@ -66,6 +68,33 @@ function createViemClient() {
     },
 
     WalletService,
+    // << WalletImportService — Alchemy 클라이언트와 chainId 는 env 에서 주입
+    {
+      provide: WalletImportService,
+      useFactory: (repo: IRepository) => {
+        const chainId = Number(process.env.CHAIN_ID ?? 1);
+        const alchemyClient = {
+          async getAssetTransfers(params: any) {
+            const baseUrl = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
+            const body = {
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'alchemy_getAssetTransfers',
+              params: [{ ...params, withMetadata: false, maxCount: '0x3e8' }],
+            };
+            const res = await fetch(baseUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            const json = await res.json() as any;
+            return json.result;
+          },
+        };
+        return new WalletImportService(alchemyClient, repo, chainId);
+      },
+      inject: ['IRepository'],
+    },
     ChainService,
     BackfillService,
     StatusService,
@@ -74,8 +103,9 @@ function createViemClient() {
 export class AppModule implements OnApplicationBootstrap {
   constructor(private readonly blockListener: BlockListener) {}
 
-  // << 앱 시작 시 블록 구독 자동 시작
+  // << watchBlocks 는 주소 중심 설계로 전환 전까지 비활성화
+  // 실시간 구독은 Alchemy Webhook 으로 대체 예정
   onApplicationBootstrap() {
-    this.blockListener.start();
+    // this.blockListener.start();
   }
 }

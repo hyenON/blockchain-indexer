@@ -1,7 +1,7 @@
 // 지갑 조회 서비스 — 시퀀스 다이어그램 #2
 // IRepository 를 통해 DB 에서 트랜잭션/토큰전송 조회 후 가공해서 반환
 import { Injectable, Inject } from '@nestjs/common';
-import { IRepository } from '../domain/repository.interface';
+import type { IRepository } from '../domain/repository.interface';
 import { Transaction, TokenTransfer } from '../domain/types';
 
 export interface WalletStats {
@@ -25,17 +25,25 @@ export class WalletService {
     return txs.sort((a, b) => (a.blockNumber > b.blockNumber ? -1 : 1));
   }
 
-  // << API005 — 지갑 통계 (총 거래 수, 첫 등장 블록, 상위 컨트랙트)
+  // << API005 — 지갑 통계 (token_transfers 기반 — transactions 테이블은 block scan 시 채워짐)
   async getStats(address: string, chainId: number): Promise<WalletStats> {
-    const [txs, topContracts, firstTx] = await Promise.all([
-      this.repo.findTransactionsByAddress(address, chainId),
+    const [transfers, topContracts] = await Promise.all([
+      this.repo.findTokenTransfers(address, chainId),
       this.repo.getTopContracts(address, chainId),
-      this.repo.getFirstTransaction(address, chainId),
     ]);
 
+    const uniqueTxCount = new Set(transfers.map((t) => t.txHash)).size;
+    const firstSeenBlock =
+      transfers.length > 0
+        ? transfers.reduce(
+            (min, t) => (t.blockNumber < min ? t.blockNumber : min),
+            transfers[0].blockNumber,
+          )
+        : null;
+
     return {
-      totalTxCount: txs.length,
-      firstSeenBlock: firstTx?.blockNumber ?? null,
+      totalTxCount: uniqueTxCount,
+      firstSeenBlock,
       topContracts,
     };
   }
