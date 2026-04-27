@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== chains ====================
+model Chain {
+  chainId       Int    @id @map("chain_id")
+  name          String @db.VarChar(50)
+  finalityDepth Int    @map("finality_depth")
+
+  @@map("chains")
+}
+
+// ==================== blocks ====================
+model Block {
+  number        BigInt  @map("number")
+  chainId       Int     @map("chain_id")
+  hash          String  @db.VarChar(66)
+  parentHash    String  @map("parent_hash") @db.VarChar(66)
+  timestamp     BigInt
+  gasUsed       BigInt  @map("gas_used")
+  gasLimit      BigInt  @map("gas_limit")
+  baseFeePerGas BigInt  @map("base_fee_per_gas")
+  isReorged     Boolean @default(false) @map("is_reorged")
+
+  @@id([number, chainId])
+  @@map("blocks")
+}
+
+// ==================== transactions ====================
+model Transaction {
+  hash             String  @id @db.VarChar(66)
+  chainId          Int     @map("chain_id")
+  blockNumber      BigInt  @map("block_number")
+  blockHash        String  @map("block_hash") @db.VarChar(66)
+  fromAddress      String  @map("from_address") @db.VarChar(42)
+  toAddress        String? @map("to_address") @db.VarChar(42)
+  value            Decimal @db.Decimal(78, 0)
+  gas              BigInt
+  input            String  @db.Text
+  nonce            Int
+  transactionIndex Int     @map("transaction_index")
+  status           String  @db.VarChar(20)
+
+  @@map("transactions")
+}
+
+// ==================== token_transfers ====================
+model TokenTransfer {
+  id              BigInt  @id @default(autoincrement())
+  chainId         Int     @map("chain_id")
+  txHash          String  @map("tx_hash") @db.VarChar(66)
+  blockNumber     BigInt  @map("block_number")
+  contractAddress String  @map("contract_address") @db.VarChar(42)
+  fromAddress     String  @map("from_address") @db.VarChar(42)
+  toAddress       String  @map("to_address") @db.VarChar(42)
+  amount          Decimal @db.Decimal(78, 0)
+  logIndex        Int     @map("log_index")
+
+  @@map("token_transfers")
+}
+
+// ==================== logs ====================
+model Log {
+  id              BigInt @id @default(autoincrement())
+  chainId         Int    @map("chain_id")
+  txHash          String @map("tx_hash") @db.VarChar(66)
+  blockNumber     BigInt @map("block_number")
+  contractAddress String @map("contract_address") @db.VarChar(42)
+  topic0          String @db.VarChar(66)
+  data            String @db.Text
+  logIndex        Int    @map("log_index")
+
+  @@map("logs")
+}
+
+// ==================== sync_status ====================
+model SyncStatus {
+  id              BigInt   @id @default(autoincrement())
+  chainId         Int      @map("chain_id")
+  lastSyncedBlock BigInt   @map("last_synced_block")
+  status          String   @db.VarChar(20)
+  errorMessage    String?  @map("error_message") @db.Text
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("sync_status")
+}
