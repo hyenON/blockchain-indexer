@@ -620,6 +620,44 @@ API 응답에서는 `"blockNumber": "100"` 처럼 문자열로 내보내고, 클
 - 변환 책임을 레이어 경계(Repository, Controller)에 몰아두면 나머지 코드는 신경 안 써도 됨
 - 이게 Clean Architecture 에서 레이어를 나누는 또 다른 실질적인 이유
 
+### 추가 — Date 도 같은 문제
+
+실제 API 를 실행했을 때 `updatedAt` 필드가 `{}` (빈 객체) 로 반환되는 버그가 있었다.
+
+```json
+// 기대한 것
+{ "updatedAt": "2026-04-27T07:37:47.485Z" }
+
+// 실제로 나온 것
+{ "updatedAt": {} }
+```
+
+**원인:** `Date` 객체도 `bigint` 와 같은 문제를 갖는다.
+`Date` 는 `typeof` 로 보면 `'object'` 라서 재귀 처리 분기에 걸린다.
+그런데 `Object.entries(new Date())` 는 빈 배열 `[]` 을 반환한다 — Date 는 열거 가능한 프로퍼티가 없기 때문.
+
+```typescript
+Object.entries(new Date())  // []
+Object.fromEntries([])      // {}   ← 이게 응답에 그대로 나온 것
+```
+
+**해결:**
+
+```typescript
+function serialize(obj: unknown): unknown {
+  if (typeof obj === 'bigint') return obj.toString();
+  if (obj instanceof Date) return obj.toISOString(); // ← 추가
+  if (Array.isArray(obj)) return obj.map(serialize);
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, serialize(v)]));
+  }
+  return obj;
+}
+```
+
+`instanceof Date` 체크를 일반 객체 체크보다 먼저 해야 한다.
+`bigint` 처럼 "특수한 타입"은 재귀 처리 전에 명시적으로 핸들링해줘야 한다는 패턴이 동일하다.
+
 ---
 
 ## L-12. 블록 인덱서의 한계 — 과거 데이터는 어떻게 채우나

@@ -7,6 +7,32 @@
 
 ---
 
+## 현재 상태
+
+### 완료
+| 항목 | 상태 |
+|------|------|
+| 이더리움 메인넷(chainId=1) 단일 체인 동작 | ✅ |
+| 지갑 주소로 ERC-20 과거 이력 import | ✅ |
+| 토큰별 잔액 조회 | ✅ |
+| 지갑 통계 조회 (총 거래 수, 첫 블록, TOP 컨트랙트) | ✅ |
+| Clean Architecture + TDD (단위 테스트 39개) | ✅ |
+
+### 알려진 문제
+| 항목 | 원인 |
+|------|------|
+| 일부 토큰 잔액 음수 | Alchemy `getAssetTransfers` 페이지네이션 미처리 (`pageKey` 루프 없음) |
+| `/transactions` 엔드포인트 빈 배열 반환 | import는 `token_transfers` 테이블만 채움. `transactions` 테이블은 watchBlocks/backfill 전용 |
+
+### 예정
+| 항목 | 내용 |
+|------|------|
+| Alchemy 페이지네이션 처리 | `pageKey` 루프로 전체 이력 수집 → 잔액 음수 문제 해결 |
+| 실시간 거래 감지 | Alchemy Address Activity Webhook 연동 |
+| 멀티체인 지원 | Base(8453), Arbitrum(42161) 등 체인별 RPC URL 관리 |
+
+---
+
 ## 아키텍처
 
 Clean Architecture 기반. 의존성은 항상 안쪽(Domain)으로만 흐른다.

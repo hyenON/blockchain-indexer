@@ -5,6 +5,7 @@ import { StatusService } from './status.service';
 // << bigint 직렬화
 function serialize(obj: unknown): unknown {
   if (typeof obj === 'bigint') return obj.toString();
+  if (obj instanceof Date) return obj.toISOString();
   if (Array.isArray(obj)) return obj.map(serialize);
   if (obj && typeof obj === 'object') {
     return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, serialize(v)]));
