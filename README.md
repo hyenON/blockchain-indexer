@@ -158,7 +158,7 @@ npm test -- --testPathPatterns=wallet.service --no-coverage
 
 | 파일 | 내용 |
 |------|------|
-| [Notion 설계서](https://www.notion.so/341c782cda03802f8147e4fcbc155ca1) | 전체 설계 문서 (요구사항, ERD, API 명세) |
+| [Notion 설계서](https://www.notion.so/4-341c782cda038053840de77625bb6d97) | 전체 설계 문서 (요구사항, ERD, API 명세) |
 | [docs/learning-log.md](./docs/learning-log.md) | Java Spring → TypeScript 전환 학습 기록 (L-01 ~ L-13) |
 | [docs/test-scenarios.md](./docs/test-scenarios.md) | TDD 시나리오 Given/When/Then (T-01 ~ T-WI3) |
 | [docs/decisions.md](./docs/decisions.md) | 설계 결정 및 실수 수정 과정 (ADR-01 ~ ADR-03) |
