@@ -108,40 +108,25 @@ transactions 테이블 → 비어있음 → count = 0
 
 ### 실제 확인한 결과
 
-**Prisma Studio — Transaction 테이블:**
+**Prisma Studio — Transaction 테이블 (378건 전부 블록 1개):**
 
-![Prisma Studio Transaction 테이블](./images/adr03-prisma-studio.png)
+![Prisma Studio Transaction 테이블](./images/prisma-studio-transaction-378.png)
 
 - 378건 전부 `blockNumber: 24969925` — 동일한 블록 번호
 - `blockHash` 도 전부 동일 → watchBlocks 가 **이더리움 블록 1개** 를 통째로 스캔한 결과
 - 내 지갑(`0x824b...`)과 무관한 랜덤 사용자들의 트랜잭션
 
+**GET /balances + GET /stats 결과 (수정 후):**
+
+![stats API 응답](./images/api-stats-response.png)
+
 **GET /wallets/:address/balances 결과:**
 
-![balances API 응답](./images/adr03-balances-api.png)
+![balances API 응답](./images/api-balances-response.png)
 
-- 일부 토큰 잔액이 음수 (예: WETH `-305212710269569890`)
-- 원인: Alchemy `maxCount` 제한으로 일부 수신 내역 누락
+- 잔액: 일부 음수 (예: WETH `-305212710269569890`) → Alchemy `maxCount` 제한으로 수신 내역 일부 누락
+- 통계: `totalTxCount: 84`, `firstSeenBlock: 19134613`, USDC 9회로 1위
 - 해결 방법: 페이지네이션(`pageKey`) 처리 추가 필요
-
-**GET /wallets/:address/stats 결과 (수정 후):**
-
-![stats API 응답](./images/adr03-stats-api.png)
-
-```json
-{
-  "totalTxCount": 84,
-  "firstSeenBlock": "19134613",
-  "topContracts": [
-    { "contractAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "count": 9 },
-    { "contractAddress": "0xdac17f958d2ee523a2206206994597c13d831ec7", "count": 6 },
-    { "contractAddress": "0xec53bf9167f50cdeb3ae105f56099aaab9061f83", "count": 5 }
-  ]
-}
-```
-- `0xa0b86...` = USDC (9회로 1위)
-- `0xdac17...` = USDT (6회로 2위)
-- `firstSeenBlock: 19134613` = 이 지갑의 첫 ERC-20 거래 블록
 
 **남은 과제:**
 `transactions` 테이블은 `watchBlocks` 또는 `backfill` 로만 채워진다.
