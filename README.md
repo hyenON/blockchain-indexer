@@ -132,6 +132,6 @@ npm test -- --testPathPatterns=wallet.service --no-coverage
 
 | 파일 | 내용 |
 |------|------|
-| `docs/learning-log.md` | Java Spring → TypeScript 전환 학습 기록 (L-01 ~ L-13) |
-| `docs/test-scenarios.md` | TDD 시나리오 Given/When/Then (T-01 ~ T-WI3) |
-| `docs/decisions.md` | 설계 결정 및 실수 수정 과정 (ADR-01 ~ ADR-03) |
+| [docs/learning-log.md](./docs/learning-log.md) | Java Spring → TypeScript 전환 학습 기록 (L-01 ~ L-13) |
+| [docs/test-scenarios.md](./docs/test-scenarios.md) | TDD 시나리오 Given/When/Then (T-01 ~ T-WI3) |
+| [docs/decisions.md](./docs/decisions.md) | 설계 결정 및 실수 수정 과정 (ADR-01 ~ ADR-03) |

@@ -5,9 +5,15 @@
 
 ---
 
-## ADR-01. watchBlocks 비활성화 — 블록 전체 스캔은 지갑 앱에 맞지 않음
+## 목차
 
-**날짜:** 2026-04-27
+- [ADR-01. watchBlocks 비활성화 — 블록 전체 스캔은 지갑 앱에 맞지 않음](#adr-01-watchblocks-비활성화--블록-전체-스캔은-지갑-앱에-맞지-않음)
+- [ADR-02. Decimal.toString() → toFixed(0) — 지수 표기법 BigInt 변환 오류](#adr-02-decimaltostring--tofixed0--지수-표기법-bigint-변환-오류)
+- [ADR-03. getStats 가 빈 데이터를 반환 — transactions vs token_transfers 혼용](#adr-03-getstats-가-빈-데이터를-반환--transactions-vs-token_transfers-혼용)
+
+---
+
+## ADR-01. watchBlocks 비활성화 — 블록 전체 스캔은 지갑 앱에 맞지 않음
 
 **상황:**
 서버를 처음 실행했을 때 `watchBlocks` 가 이더리움 메인넷에 연결되자마자
@@ -44,8 +50,6 @@ Alchemy Address Activity Webhook 으로 대체해야 함.
 
 ## ADR-02. Decimal.toString() → toFixed(0) — 지수 표기법 BigInt 변환 오류
 
-**날짜:** 2026-04-27
-
 **상황:**
 `GET /wallets/:address/balances` 호출 시 서버 에러:
 ```
@@ -78,8 +82,6 @@ BigInt(row.amount.toFixed(0))  // "2600000000000000000000" → 정상
 
 ## ADR-03. getStats 가 빈 데이터를 반환 — transactions vs token_transfers 혼용
 
-**날짜:** 2026-04-27
-
 **상황:**
 `GET /wallets/:address/stats` 가 `{ totalTxCount: 0, firstSeenBlock: null }` 반환.
 import 로 90건 데이터를 넣었는데도 0이 나왔다.
@@ -97,49 +99,35 @@ getStats 가 조회한 것:
 transactions 테이블 → 비어있음 → count = 0
 ```
 
-**Prisma Studio 에서 확인한 DB 상태:**
-- Transaction: 378건 → watchBlocks 가 잠깐 켜졌을 때 랜덤 블록 1개의 모든 트랜잭션
-- TokenTransfer: 316건 → 그 블록의 ERC-20 전송 + 내 지갑 import 90건
-- 내 지갑과 관련된 Transaction 은 0건 (import 가 token_transfers 만 채움)
-
 **수정한 것:**
 1. `WalletService.getStats()` → `transactions` 대신 `token_transfers` 기반으로 계산
 2. `PrismaRepository.getTopContracts()` → `transaction.groupBy(toAddress)` 대신
    `tokenTransfer.groupBy(contractAddress)` 로 변경
 
-**수정 후 결과:**
-```json
-{
-  "totalTxCount": 84,
-  "firstSeenBlock": "19134613",
-  "topContracts": [
-    { "contractAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "count": 9 },
-    ...
-  ]
-}
-```
-
-**남은 과제:**
-`transactions` 테이블은 `watchBlocks` 또는 `backfill` 로만 채워진다.
-지갑 앱 목적이라면 `token_transfers` 중심으로 API 를 설계하는 게 더 자연스럽다.
-
 ---
 
-### 실제 확인한 결과 (스크린샷 근거)
+### 실제 확인한 결과
 
-**Prisma Studio — Transaction 테이블 (378건):**
+**Prisma Studio — Transaction 테이블:**
+
+![Prisma Studio Transaction 테이블](./images/adr03-prisma-studio.png)
+
 - 378건 전부 `blockNumber: 24969925` — 동일한 블록 번호
-- `blockHash` 도 전부 동일 (`0x830ab17e5c54c5dd1f1...`)
-- 즉, watchBlocks 가 잠깐 실행되면서 **이더리움 블록 1개** 를 통째로 스캔한 결과
+- `blockHash` 도 전부 동일 → watchBlocks 가 **이더리움 블록 1개** 를 통째로 스캔한 결과
 - 내 지갑(`0x824b...`)과 무관한 랜덤 사용자들의 트랜잭션
 
 **GET /wallets/:address/balances 결과:**
-- 일부 토큰 잔액이 음수로 표시됨 (예: WETH `-305212710269569890`)
-- 원인: Alchemy `getAssetTransfers` 의 `maxCount` 제한(1000건)으로
-  일부 수신 내역이 누락되어 보낸 것만 기록된 경우
+
+![balances API 응답](./images/adr03-balances-api.png)
+
+- 일부 토큰 잔액이 음수 (예: WETH `-305212710269569890`)
+- 원인: Alchemy `maxCount` 제한으로 일부 수신 내역 누락
 - 해결 방법: 페이지네이션(`pageKey`) 처리 추가 필요
 
 **GET /wallets/:address/stats 결과 (수정 후):**
+
+![stats API 응답](./images/adr03-stats-api.png)
+
 ```json
 {
   "totalTxCount": 84,
@@ -147,11 +135,14 @@ transactions 테이블 → 비어있음 → count = 0
   "topContracts": [
     { "contractAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "count": 9 },
     { "contractAddress": "0xdac17f958d2ee523a2206206994597c13d831ec7", "count": 6 },
-    { "contractAddress": "0xec53bf9167f50cdeb3ae105f56099aaab9061f83", "count": 5 },
-    ...
+    { "contractAddress": "0xec53bf9167f50cdeb3ae105f56099aaab9061f83", "count": 5 }
   ]
 }
 ```
 - `0xa0b86...` = USDC (9회로 1위)
 - `0xdac17...` = USDT (6회로 2위)
 - `firstSeenBlock: 19134613` = 이 지갑의 첫 ERC-20 거래 블록
+
+**남은 과제:**
+`transactions` 테이블은 `watchBlocks` 또는 `backfill` 로만 채워진다.
+지갑 앱 목적이라면 `token_transfers` 중심으로 API 를 설계하는 게 더 자연스럽다.
